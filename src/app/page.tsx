@@ -6,6 +6,7 @@ import { Sidebar } from "./components/sidebar";
 import { Chart } from "./components/chart";
 import { Panel } from "./components/panel";
 import { Header } from "./components/header";
+import { Footer } from "./components/footer";
 
 export default function Home() {
   const [panelWidth, setPanelWidth] = useState(320);
@@ -28,13 +29,14 @@ export default function Home() {
         />
 
         {/* Chart area */}
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex flex-col">
           <Chart
             className="h-full"
             panelWidth={panelWidth}
             selectedTool={selectedTool}
             isDrawingEnabled={isDrawingEnabled}
           />
+          <Footer />
         </div>
 
         {/* Resizable Panel */}

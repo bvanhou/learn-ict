@@ -23,6 +23,8 @@ interface DrawingElement {
   points: DrawingPoint[];
   text?: string;
   color?: string;
+  fontSize?: number;
+  fontFamily?: string;
 }
 
 export const Chart: React.FC<ChartProps> = ({
@@ -39,6 +41,8 @@ export const Chart: React.FC<ChartProps> = ({
     null
   );
   const [mousePosition, setMousePosition] = useState<DrawingPoint | null>(null);
+  const [isTextMode, setIsTextMode] = useState(false);
+  const [textInput, setTextInput] = useState("");
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -126,6 +130,28 @@ export const Chart: React.FC<ChartProps> = ({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
+    // Handle text tool
+    if (selectedTool === "text") {
+      setIsTextMode(true);
+      setTextInput("");
+      return;
+    }
+
+    // Handle emoji tool
+    if (selectedTool === "emoji") {
+      const emoji = "📈";
+      const newDrawing: DrawingElement = {
+        id: Date.now().toString(),
+        type: "emoji",
+        points: [{ x, y }],
+        text: emoji,
+        color: "#ffd700",
+        fontSize: 24,
+      };
+      setDrawingElements((prev) => [...prev, newDrawing]);
+      return;
+    }
+
     const newDrawing: DrawingElement = {
       id: Date.now().toString(),
       type: selectedTool,
@@ -163,6 +189,33 @@ export const Chart: React.FC<ChartProps> = ({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isTextMode && e.key === "Enter") {
+      if (textInput.trim() && mousePosition) {
+        const newDrawing: DrawingElement = {
+          id: Date.now().toString(),
+          type: "text",
+          points: [mousePosition],
+          text: textInput,
+          color: "#ffffff",
+          fontSize: 14,
+        };
+        setDrawingElements((prev) => [...prev, newDrawing]);
+        setIsTextMode(false);
+        setTextInput("");
+      }
+    } else if (e.key === "Escape") {
+      setIsTextMode(false);
+      setTextInput("");
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (isTextMode) {
+      setTextInput((prev) => prev + e.key);
+    }
+  };
+
   // Effect to handle panel width changes
   useEffect(() => {
     if (chartRef.current && chartContainerRef.current) {
@@ -184,8 +237,132 @@ export const Chart: React.FC<ChartProps> = ({
     }
   }, [panelWidth]);
 
+  const renderDrawingElement = (element: DrawingElement) => {
+    switch (element.type) {
+      case "line":
+        if (element.points.length >= 2) {
+          return (
+            <line
+              x1={element.points[0].x}
+              y1={element.points[0].y}
+              x2={element.points[element.points.length - 1].x}
+              y2={element.points[element.points.length - 1].y}
+              stroke={element.color || "#2962ff"}
+              strokeWidth="2"
+              fill="none"
+            />
+          );
+        }
+        break;
+
+      case "rectangle":
+        if (element.points.length >= 2) {
+          return (
+            <rect
+              x={Math.min(
+                element.points[0].x,
+                element.points[element.points.length - 1].x
+              )}
+              y={Math.min(
+                element.points[0].y,
+                element.points[element.points.length - 1].y
+              )}
+              width={Math.abs(
+                element.points[element.points.length - 1].x -
+                  element.points[0].x
+              )}
+              height={Math.abs(
+                element.points[element.points.length - 1].y -
+                  element.points[0].y
+              )}
+              stroke={element.color || "#2962ff"}
+              strokeWidth="2"
+              fill="none"
+            />
+          );
+        }
+        break;
+
+      case "text":
+        if (element.points.length >= 1 && element.text) {
+          return (
+            <text
+              x={element.points[0].x}
+              y={element.points[0].y}
+              fill={element.color || "#ffffff"}
+              fontSize={element.fontSize || 14}
+              fontFamily="Arial, sans-serif"
+              dominantBaseline="middle"
+            >
+              {element.text}
+            </text>
+          );
+        }
+        break;
+
+      case "emoji":
+        if (element.points.length >= 1 && element.text) {
+          return (
+            <text
+              x={element.points[0].x}
+              y={element.points[0].y}
+              fontSize={element.fontSize || 24}
+              dominantBaseline="middle"
+              textAnchor="middle"
+            >
+              {element.text}
+            </text>
+          );
+        }
+        break;
+
+      case "ruler":
+        if (element.points.length >= 2) {
+          const start = element.points[0];
+          const end = element.points[element.points.length - 1];
+          const distance = Math.sqrt(
+            Math.pow(end.x - start.x, 2) + Math.pow(end.y - start.y, 2)
+          );
+
+          return (
+            <g>
+              <line
+                x1={start.x}
+                y1={start.y}
+                x2={end.x}
+                y2={end.y}
+                stroke={element.color || "#ff6b6b"}
+                strokeWidth="2"
+                strokeDasharray="5,5"
+                fill="none"
+              />
+              <text
+                x={(start.x + end.x) / 2}
+                y={(start.y + end.y) / 2 - 10}
+                fill={element.color || "#ff6b6b"}
+                fontSize="12"
+                textAnchor="middle"
+                dominantBaseline="middle"
+              >
+                {Math.round(distance)}px
+              </text>
+            </g>
+          );
+        }
+        break;
+
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className={`bg-primary min-w-0 ${className}`}>
+    <div
+      className={`bg-primary min-w-0 ${className}`}
+      onKeyDown={handleKeyDown}
+      onKeyPress={handleKeyPress}
+      tabIndex={0}
+    >
       <div
         ref={chartContainerRef}
         className="w-full h-full relative"
@@ -201,90 +378,48 @@ export const Chart: React.FC<ChartProps> = ({
         >
           {/* Render existing drawings */}
           {drawingElements.map((element) => (
-            <g key={element.id}>
-              {element.type === "line" && element.points.length >= 2 && (
-                <line
-                  x1={element.points[0].x}
-                  y1={element.points[0].y}
-                  x2={element.points[element.points.length - 1].x}
-                  y2={element.points[element.points.length - 1].y}
-                  stroke={element.color || "#2962ff"}
-                  strokeWidth="2"
-                  fill="none"
-                />
-              )}
-              {element.type === "rectangle" && element.points.length >= 2 && (
-                <rect
-                  x={Math.min(
-                    element.points[0].x,
-                    element.points[element.points.length - 1].x
-                  )}
-                  y={Math.min(
-                    element.points[0].y,
-                    element.points[element.points.length - 1].y
-                  )}
-                  width={Math.abs(
-                    element.points[element.points.length - 1].x -
-                      element.points[0].x
-                  )}
-                  height={Math.abs(
-                    element.points[element.points.length - 1].y -
-                      element.points[0].y
-                  )}
-                  stroke={element.color || "#2962ff"}
-                  strokeWidth="2"
-                  fill="none"
-                />
-              )}
-            </g>
+            <g key={element.id}>{renderDrawingElement(element)}</g>
           ))}
 
           {/* Render current drawing */}
-          {currentDrawing && (
-            <g>
-              {currentDrawing.type === "line" &&
-                currentDrawing.points.length >= 2 && (
-                  <line
-                    x1={currentDrawing.points[0].x}
-                    y1={currentDrawing.points[0].y}
-                    x2={
-                      currentDrawing.points[currentDrawing.points.length - 1].x
-                    }
-                    y2={
-                      currentDrawing.points[currentDrawing.points.length - 1].y
-                    }
-                    stroke={currentDrawing.color || "#2962ff"}
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                )}
-              {currentDrawing.type === "rectangle" &&
-                currentDrawing.points.length >= 2 && (
-                  <rect
-                    x={Math.min(
-                      currentDrawing.points[0].x,
-                      currentDrawing.points[currentDrawing.points.length - 1].x
-                    )}
-                    y={Math.min(
-                      currentDrawing.points[0].y,
-                      currentDrawing.points[currentDrawing.points.length - 1].y
-                    )}
-                    width={Math.abs(
-                      currentDrawing.points[currentDrawing.points.length - 1]
-                        .x - currentDrawing.points[0].x
-                    )}
-                    height={Math.abs(
-                      currentDrawing.points[currentDrawing.points.length - 1]
-                        .y - currentDrawing.points[0].y
-                    )}
-                    stroke={currentDrawing.color || "#2962ff"}
-                    strokeWidth="2"
-                    fill="none"
-                  />
-                )}
-            </g>
-          )}
+          {currentDrawing && <g>{renderDrawingElement(currentDrawing)}</g>}
         </svg>
+
+        {/* Text input overlay */}
+        {isTextMode && mousePosition && (
+          <div
+            className="absolute pointer-events-auto"
+            style={{
+              left: mousePosition.x,
+              top: mousePosition.y,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <input
+              type="text"
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              className="bg-gray-800 text-white px-2 py-1 text-sm border border-gray-600 rounded focus:outline-none focus:border-blue-500"
+              placeholder="Type text..."
+              autoFocus
+              onBlur={() => {
+                if (textInput.trim()) {
+                  const newDrawing: DrawingElement = {
+                    id: Date.now().toString(),
+                    type: "text",
+                    points: [mousePosition],
+                    text: textInput,
+                    color: "#ffffff",
+                    fontSize: 14,
+                  };
+                  setDrawingElements((prev) => [...prev, newDrawing]);
+                }
+                setIsTextMode(false);
+                setTextInput("");
+              }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
