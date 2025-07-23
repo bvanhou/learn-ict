@@ -22,11 +22,15 @@ import {
 
 interface HeaderProps {
   className?: string;
+  selectedTimeframe?: string;
+  onTimeframeChange?: (timeframe: string) => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ className = "" }) => {
-  const [selectedTimeframe, setSelectedTimeframe] = useState("1h");
-
+export const Header: React.FC<HeaderProps> = ({
+  className = "",
+  selectedTimeframe = "1h",
+  onTimeframeChange,
+}) => {
   const timeframes = [
     { value: "30s", label: "30s" },
     { value: "1m", label: "1m" },
@@ -61,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ className = "" }) => {
             {timeframes.map((timeframe) => (
               <button
                 key={timeframe.value}
-                onClick={() => setSelectedTimeframe(timeframe.value)}
+                onClick={() => onTimeframeChange?.(timeframe.value)}
                 className={`px-2 py-1 text-sm font-medium rounded transition-colors ${
                   selectedTimeframe === timeframe.value
                     ? "bg-white-600 text-white"

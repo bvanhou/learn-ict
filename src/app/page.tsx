@@ -12,11 +12,17 @@ export default function Home() {
   const [panelWidth, setPanelWidth] = useState(320);
   const [selectedTool, setSelectedTool] = useState("pointer");
   const [isDrawingEnabled, setIsDrawingEnabled] = useState(true);
+  const [headerTimeframe, setHeaderTimeframe] = useState("1h");
+  const [footerTimeframe, setFooterTimeframe] = useState("1D");
+  const [crosshairMode, setCrosshairMode] = useState("hidden");
 
   return (
     <Layout>
       {/* Header */}
-      <Header />
+      <Header
+        selectedTimeframe={headerTimeframe}
+        onTimeframeChange={setHeaderTimeframe}
+      />
 
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden h-full">
@@ -26,6 +32,8 @@ export default function Home() {
           onToolSelect={setSelectedTool}
           isDrawingEnabled={isDrawingEnabled}
           onDrawingToggle={setIsDrawingEnabled}
+          crosshairMode={crosshairMode}
+          onCrosshairModeChange={setCrosshairMode}
         />
 
         {/* Chart area */}
@@ -35,8 +43,14 @@ export default function Home() {
             panelWidth={panelWidth}
             selectedTool={selectedTool}
             isDrawingEnabled={isDrawingEnabled}
+            headerTimeframe={headerTimeframe}
+            footerTimeframe={footerTimeframe}
+            crosshairMode={crosshairMode}
           />
-          <Footer />
+          <Footer
+            selectedTimeframe={footerTimeframe}
+            onTimeframeChange={setFooterTimeframe}
+          />
         </div>
 
         {/* Resizable Panel */}
