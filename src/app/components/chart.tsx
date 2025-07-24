@@ -8,8 +8,11 @@ import {
   ISeriesApi,
   Time,
   CrosshairMode,
+  MouseEventParams,
 } from "lightweight-charts";
 import { RectangleDrawingTool } from "../plugins/rectangle";
+import { TrendLineDrawingTool } from "../plugins/trendline";
+import { FibonacciDrawingTool } from "../plugins/fibonacci";
 import { MarketDataService, MarketDataUtils } from "../services/market-data";
 
 interface ChartProps {
@@ -21,23 +24,6 @@ interface ChartProps {
   footerTimeframe?: string;
   crosshairMode?: string;
   disableMouseHandling?: boolean;
-}
-
-interface DrawingPoint {
-  x: number;
-  y: number;
-  time?: string;
-  price?: number;
-}
-
-interface DrawingElement {
-  id: string;
-  type: string;
-  points: DrawingPoint[];
-  text?: string;
-  color?: string;
-  fontSize?: number;
-  fontFamily?: string;
 }
 
 export const Chart: React.FC<ChartProps> = ({
@@ -53,13 +39,9 @@ export const Chart: React.FC<ChartProps> = ({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi>(null);
   const rectangleToolRef = useRef<RectangleDrawingTool | null>(null);
+  const trendlineToolRef = useRef<TrendLineDrawingTool | null>(null);
+  const fibonacciToolRef = useRef<FibonacciDrawingTool | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [drawingElements, setDrawingElements] = useState<DrawingElement[]>([]);
-  const [currentDrawing, setCurrentDrawing] = useState<DrawingElement | null>(
-    null
-  );
-  const [mousePosition, setMousePosition] = useState<DrawingPoint | null>(null);
   const [isTextMode, setIsTextMode] = useState(false);
   const [textInput, setTextInput] = useState("");
   const [chartSize, setChartSize] = useState({ width: 0, height: 0 });
@@ -69,6 +51,8 @@ export const Chart: React.FC<ChartProps> = ({
   );
   const [isMouseDown, setIsMouseDown] = useState(false);
   const [isHoveringHandle, setIsHoveringHandle] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Function to generate data based on timeframes
   const generateChartData = (
@@ -336,12 +320,60 @@ export const Chart: React.FC<ChartProps> = ({
       }
     );
 
+    // Initialize the trendline drawing tool
+    trendlineToolRef.current = new TrendLineDrawingTool(
+      chart,
+      candlestickSeriesRef.current,
+      dummyToolbar,
+      {
+        lineColor: "rgba(255, 165, 0, 1)", // Orange color for trendlines
+        previewLineColor: "rgba(255, 165, 0, 0.5)",
+        lineWidth: 2,
+        borderColor: "rgba(41, 98, 255, 1)",
+        borderWidth: 1,
+        labelColor: "rgba(255, 165, 0, 1)",
+        labelTextColor: "white",
+        showLabels: false,
+      },
+      (isHovering: boolean) => {
+        setIsHoveringHandle(isHovering);
+      }
+    );
+
+    // Initialize the Fibonacci drawing tool
+    fibonacciToolRef.current = new FibonacciDrawingTool(
+      chart,
+      candlestickSeriesRef.current,
+      dummyToolbar,
+      {
+        lineColor: "rgba(255, 0, 255, 1)", // Magenta color for Fibonacci
+        previewLineColor: "rgba(255, 0, 255, 0.5)",
+        lineWidth: 2,
+        borderColor: "rgba(255, 0, 255, 1)",
+        borderWidth: 1,
+        labelColor: "rgba(255, 0, 255, 1)",
+        labelTextColor: "white",
+        showLabels: true,
+      },
+      (isHovering: boolean) => {
+        setIsHoveringHandle(isHovering);
+      }
+    );
+
     return () => {
       window.removeEventListener("resize", updateChartSize);
       resizeObserver.disconnect();
       if (rectangleToolRef.current) {
         rectangleToolRef.current.remove();
         rectangleToolRef.current = null;
+      }
+      if (trendlineToolRef.current) {
+        trendlineToolRef.current.remove();
+        trendlineToolRef.current = null;
+      }
+      if (fibonacciToolRef.current) {
+        fibonacciToolRef.current.remove();
+        fibonacciToolRef.current = null;
       }
       chart.remove();
     };
@@ -357,12 +389,25 @@ export const Chart: React.FC<ChartProps> = ({
 
   // Effect to handle tool changes
   useEffect(() => {
-    if (!rectangleToolRef.current) return;
+    if (
+      !rectangleToolRef.current ||
+      !trendlineToolRef.current ||
+      !fibonacciToolRef.current
+    )
+      return;
 
+    // Stop all tools first
+    rectangleToolRef.current.stopDrawing();
+    trendlineToolRef.current.stopDrawing();
+    fibonacciToolRef.current.stopDrawing();
+
+    // Start the selected tool
     if (selectedTool === "rectangle") {
       rectangleToolRef.current.startDrawing();
-    } else {
-      rectangleToolRef.current.stopDrawing();
+    } else if (selectedTool === "trendline") {
+      trendlineToolRef.current.startDrawing();
+    } else if (selectedTool === "fibonacci") {
+      fibonacciToolRef.current.startDrawing();
     }
   }, [selectedTool]);
 
@@ -390,7 +435,9 @@ export const Chart: React.FC<ChartProps> = ({
     const shouldEnableScrolling =
       !isDrawingEnabled ||
       selectedTool === "pointer" ||
-      selectedTool === "rectangle";
+      selectedTool === "rectangle" ||
+      selectedTool === "trendline" ||
+      selectedTool === "fibonacci";
 
     chartRef.current.applyOptions({
       handleScroll: {
@@ -402,12 +449,120 @@ export const Chart: React.FC<ChartProps> = ({
     });
   }, [isDrawingEnabled, selectedTool]);
 
+  // Effect to handle keyboard events for delete functionality
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+
+        // Delete selected drawings immediately
+        deleteSelectedDrawings();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  // Effect to handle trash tool selection
+  useEffect(() => {
+    if (selectedTool === "trash") {
+      // Delete selected drawings immediately, or show confirmation for all
+      const hasSelected = checkSelectedDrawings();
+
+      if (hasSelected) {
+        // Delete selected drawings
+        deleteSelectedDrawings();
+      } else {
+        // Show confirmation dialog for deleting all drawings
+        setShowDeleteConfirm(true);
+      }
+    }
+  }, [selectedTool]);
+
+  // Method to delete selected drawings
+  const deleteSelectedDrawings = () => {
+    let hasDeleted = false;
+
+    if (rectangleToolRef.current) {
+      const selectedRectangles =
+        rectangleToolRef.current.getSelectedRectangles();
+      selectedRectangles.forEach((rectangle) => {
+        rectangleToolRef.current!.deleteRectangle(rectangle);
+        hasDeleted = true;
+      });
+    }
+
+    if (trendlineToolRef.current) {
+      const selectedTrendLines =
+        trendlineToolRef.current.getSelectedTrendLines();
+      selectedTrendLines.forEach((trendLine) => {
+        trendlineToolRef.current!.deleteTrendLine(trendLine);
+        hasDeleted = true;
+      });
+    }
+
+    if (fibonacciToolRef.current) {
+      const selectedFibRetracements =
+        fibonacciToolRef.current.getSelectedFibRetracements();
+      selectedFibRetracements.forEach((fibRetracement) => {
+        fibonacciToolRef.current!.deleteFibRetracement(fibRetracement);
+        hasDeleted = true;
+      });
+    }
+  };
+
+  // Method to check if any drawings are selected
+  const checkSelectedDrawings = (): boolean => {
+    let hasSelected = false;
+
+    if (rectangleToolRef.current) {
+      const selectedRectangles =
+        rectangleToolRef.current.getSelectedRectangles();
+      if (selectedRectangles.length > 0) hasSelected = true;
+    }
+
+    if (trendlineToolRef.current) {
+      const selectedTrendLines =
+        trendlineToolRef.current.getSelectedTrendLines();
+      if (selectedTrendLines.length > 0) hasSelected = true;
+    }
+
+    if (fibonacciToolRef.current) {
+      const selectedFibRetracements =
+        fibonacciToolRef.current.getSelectedFibRetracements();
+      if (selectedFibRetracements.length > 0) hasSelected = true;
+    }
+
+    return hasSelected;
+  };
+
+  // Method to delete all drawings
+  const deleteAllDrawings = () => {
+    // Clear plugin-based drawings
+    if (rectangleToolRef.current) {
+      rectangleToolRef.current.deleteAllRectangles();
+    }
+
+    if (trendlineToolRef.current) {
+      trendlineToolRef.current.deleteAllTrendLines();
+    }
+
+    if (fibonacciToolRef.current) {
+      fibonacciToolRef.current.deleteAllFibRetracements();
+    }
+  };
+
   // Only handle mouse events for React-based drawing tools (not lightweight-charts plugins)
   const shouldHandleReactMouseEvents = () => {
     return (
       isDrawingEnabled &&
       selectedTool !== "pointer" &&
-      selectedTool !== "rectangle"
+      selectedTool !== "rectangle" &&
+      selectedTool !== "trendline" &&
+      selectedTool !== "fibonacci"
     );
   };
 
@@ -429,48 +584,29 @@ export const Chart: React.FC<ChartProps> = ({
       return;
     }
 
-    // For rectangle tool, let the lightweight-charts plugin handle it
-    if (selectedTool === "rectangle") {
+    // For rectangle, trendline, and fibonacci tools, let the lightweight-charts plugin handle it
+    if (
+      selectedTool === "rectangle" ||
+      selectedTool === "trendline" ||
+      selectedTool === "fibonacci"
+    ) {
       return;
     }
 
-    // Handle drawing tools - start drawing immediately on any click
-    if (isDrawingEnabled && selectedTool !== "pointer") {
+    // Handle drawing selection when using pointer tool
+    if (selectedTool === "pointer") {
+      // Check if clicking on any drawings and select them
+      checkSelectedDrawings();
+    }
+
+    // Handle text tool
+    if (isDrawingEnabled && selectedTool === "text") {
       const rect = chartContainerRef.current?.getBoundingClientRect();
       if (!rect) return;
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
-
-      if (selectedTool === "text") {
-        setIsTextMode(true);
-        setTextInput("");
-        return;
-      }
-
-      if (selectedTool === "emoji") {
-        const emoji = "📈";
-        const newDrawing: DrawingElement = {
-          id: Date.now().toString(),
-          type: "emoji",
-          points: [{ x, y }],
-          text: emoji,
-          color: "#ffd700",
-          fontSize: 24,
-        };
-        setDrawingElements((prev) => [...prev, newDrawing]);
-        return;
-      }
-
-      // Handle other drawing tools (line, trend-line, etc.)
-      const newDrawing: DrawingElement = {
-        id: Date.now().toString(),
-        type: selectedTool,
-        points: [{ x, y }],
-        color: "#2962ff",
-      };
-
-      setCurrentDrawing(newDrawing);
-      setIsDrawing(true);
+      setIsTextMode(true);
+      setTextInput("");
       return;
     }
 
@@ -485,8 +621,8 @@ export const Chart: React.FC<ChartProps> = ({
     // Don't handle mouse events if disabled or hovering over handles
     if (disableMouseHandling || isHoveringHandle) return;
 
-    // For rectangle tool, let the lightweight-charts plugin handle it
-    if (selectedTool === "rectangle") {
+    // For rectangle and trendline tools, let the lightweight-charts plugin handle it
+    if (selectedTool === "rectangle" || selectedTool === "trendline") {
       return;
     }
 
@@ -541,37 +677,6 @@ export const Chart: React.FC<ChartProps> = ({
       return;
     }
 
-    // Handle drawing tools
-    if (
-      isDrawingEnabled &&
-      selectedTool !== "pointer" &&
-      isDrawing &&
-      currentDrawing
-    ) {
-      const rect = chartContainerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      setMousePosition({ x, y });
-
-      if (
-        currentDrawing.type === "rectangle" &&
-        currentDrawing.points.length === 1
-      ) {
-        // For rectangle, we only need two points (start and end)
-        setCurrentDrawing({
-          ...currentDrawing,
-          points: [currentDrawing.points[0], { x, y }],
-        });
-      } else {
-        setCurrentDrawing({
-          ...currentDrawing,
-          points: [...currentDrawing.points, { x, y }],
-        });
-      }
-      return;
-    }
-
     // Fallback for other cases
     if (!shouldHandleReactMouseEvents() && !shouldHandleRectangleDrawing()) {
       return;
@@ -593,19 +698,6 @@ export const Chart: React.FC<ChartProps> = ({
     if (isPanning) {
       setIsPanning(false);
       setPanStart(null);
-      return;
-    }
-
-    // Handle drawing tools completion
-    if (
-      isDrawingEnabled &&
-      selectedTool !== "pointer" &&
-      isDrawing &&
-      currentDrawing
-    ) {
-      setDrawingElements((prev) => [...prev, currentDrawing]);
-      setCurrentDrawing(null);
-      setIsDrawing(false);
       return;
     }
 
@@ -651,69 +743,11 @@ export const Chart: React.FC<ChartProps> = ({
     }
   };
 
-  const renderDrawingElement = (element: DrawingElement) => {
-    switch (element.type) {
-      case "line":
-        if (element.points.length >= 2) {
-          const pointsString = element.points
-            .map((p) => `${p.x},${p.y}`)
-            .join(" ");
-          return (
-            <polyline
-              points={pointsString}
-              stroke={element.color || "#2962ff"}
-              strokeWidth="2"
-              fill="none"
-            />
-          );
-        }
-        break;
-      case "rectangle":
-        if (element.points.length >= 2) {
-          const [start, end] = element.points;
-          const x = Math.min(start.x, end.x);
-          const y = Math.min(start.y, end.y);
-          const width = Math.abs(end.x - start.x);
-          const height = Math.abs(end.y - start.y);
-          return (
-            <rect
-              x={x}
-              y={y}
-              width={width}
-              height={height}
-              stroke={element.color || "#2962ff"}
-              strokeWidth="2"
-              fill="none"
-            />
-          );
-        }
-        break;
-      case "text":
-      case "emoji":
-        if (element.points.length >= 1 && element.text) {
-          return (
-            <text
-              x={element.points[0].x}
-              y={element.points[0].y}
-              fontSize={
-                element.fontSize || (element.type === "emoji" ? 24 : 14)
-              }
-              fill={element.color || "#ffffff"}
-              dominantBaseline="middle"
-              textAnchor={element.type === "emoji" ? "middle" : undefined}
-            >
-              {element.text}
-            </text>
-          );
-        }
-        break;
-      default:
-        return null;
-    }
-  };
-
   return (
-    <div className={`bg-primary min-w-0 ${className}`} tabIndex={0}>
+    <div
+      className={`bg-primary min-w-0 focus:outline-none ${className}`}
+      tabIndex={0}
+    >
       <div
         ref={chartContainerRef}
         className={`w-full h-full relative ${
@@ -756,12 +790,40 @@ export const Chart: React.FC<ChartProps> = ({
             strokeWidth="1"
             fill="none"
           />
-          {drawingElements.map((element) => (
-            <g key={element.id}>{renderDrawingElement(element)}</g>
-          ))}
-          {currentDrawing && <g>{renderDrawingElement(currentDrawing)}</g>}
         </svg>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md mx-4 shadow-2xl border border-gray-600">
+            <h3 className="text-lg font-semibold text-white mb-4">
+              Delete All Drawings
+            </h3>
+            <p className="text-gray-300 mb-6">
+              Are you sure you want to delete all drawings? This action cannot
+              be undone.
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  deleteAllDrawings();
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+              >
+                Delete All
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

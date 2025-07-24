@@ -215,22 +215,8 @@ class RectangleAxisPaneRenderer implements IPrimitivePaneRenderer {
   }
 
   draw(target: CanvasRenderingTarget2D) {
-    target.useBitmapCoordinateSpace((scope) => {
-      if (this._p1 === null || this._p2 === null) return;
-      const ctx = scope.context;
-      ctx.globalAlpha = 0.5;
-      const positions = positionsBox(
-        this._p1,
-        this._p2,
-        this._vertical ? scope.verticalPixelRatio : scope.horizontalPixelRatio
-      );
-      ctx.fillStyle = this._fillColor;
-      if (this._vertical) {
-        ctx.fillRect(0, positions.position, 15, positions.length);
-      } else {
-        ctx.fillRect(positions.position, 0, positions.length, 15);
-      }
-    });
+    // Don't draw anything - hide the axis pane highlights
+    return;
   }
 }
 
@@ -298,11 +284,11 @@ abstract class RectangleAxisView implements ISeriesPrimitiveAxisView {
   }
 
   visible(): boolean {
-    return this._source._options.showLabels;
+    return false; // Hide axis labels
   }
 
   tickVisible(): boolean {
-    return this._source._options.showLabels;
+    return false; // Hide axis ticks
   }
 
   textColor() {
@@ -1528,5 +1514,54 @@ export class RectangleDrawingTool {
       this._defaultOptions.labelColor = newColor;
     });
     this._drawingsToolbarContainer.appendChild(colorPicker);
+  }
+
+  // Method to delete a specific rectangle
+  deleteRectangle(rectangle: Rectangle) {
+    this._removeRectangle(rectangle);
+    const index = this._rectangles.indexOf(rectangle);
+    if (index > -1) {
+      this._rectangles.splice(index, 1);
+    }
+  }
+
+  // Method to delete all rectangles
+  deleteAllRectangles() {
+    this._rectangles.forEach((rectangle) => {
+      this._removeRectangle(rectangle);
+    });
+    this._rectangles = [];
+  }
+
+  // Method to get all rectangles
+  getRectangles() {
+    return this._rectangles;
+  }
+
+  // Method to select a rectangle
+  selectRectangle(rectangle: Rectangle) {
+    rectangle.showHandles();
+    this._hoveredRectangle = rectangle;
+  }
+
+  // Method to deselect a rectangle
+  deselectRectangle(rectangle: Rectangle) {
+    rectangle.hideHandles();
+    if (this._hoveredRectangle === rectangle) {
+      this._hoveredRectangle = undefined;
+    }
+  }
+
+  // Method to get selected rectangles
+  getSelectedRectangles(): Rectangle[] {
+    return this._hoveredRectangle ? [this._hoveredRectangle] : [];
+  }
+
+  // Method to delete selected rectangles
+  deleteSelectedRectangles() {
+    if (this._hoveredRectangle) {
+      this.deleteRectangle(this._hoveredRectangle);
+      this._hoveredRectangle = undefined;
+    }
   }
 }

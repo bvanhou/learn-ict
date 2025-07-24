@@ -34,10 +34,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const drawingTools = [
     { id: "pointer", icon: "pointer", label: "Pointer" },
-    { id: "trend-line", icon: "trend-line", label: "Trend Line" },
+    { id: "trendline", icon: "trendline", label: "Trend Line" },
     {
-      id: "fib-retracement",
-      icon: "fib-retracement",
+      id: "fibonacci",
+      icon: "fibonacci",
       label: "Fib Retracement",
     },
     { id: "long-position", icon: "long-position", label: "Long Position" },
@@ -61,13 +61,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         crosshairMode: "hidden",
       },
     ],
-    "trend-line": [
-      { id: "trend-line", icon: "trend-line", label: "Trend Line" },
-    ],
-    "fib-retracement": [
+    trendline: [{ id: "trendline", icon: "trendline", label: "Trend Line" }],
+    fibonacci: [
       {
-        id: "fib-retracement",
-        icon: "fib-retracement",
+        id: "fibonacci",
+        icon: "fibonacci",
         label: "Fib Retracement",
       },
     ],
@@ -106,9 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   };
 
   return (
-    <aside
-      className={`w-14 bg-primary border-r border-primary flex-shrink-0 ${className}`}
-    >
+    <aside className={`w-14 bg-primary flex-shrink-0 ${className}`}>
       <div className="flex flex-col items-center py-4 space-y-2">
         {drawingTools.map((tool) => {
           const isSelected = selectedTool === tool.id;
